@@ -1,0 +1,80 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# This workflow generates an SLSA provenance file for your project.
+# The generation satisfies level 3 for the provenance requirements - see https://slsa.dev/spec/v0.1/requirements
+# The project is an initiative of the OpenSSF (openssf.org) and is developed at
+# https://github.com/slsa-framework/slsa-github-generator.
+# The provenance file can be verified using https://github.com/slsa-framework/slsa-verifier.
+# For more information about SLSA and how it improves the supply chain, visit slsa.dev.
+
+name: SLSA Generic Generator
+
+on:
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      digests: ${{ steps.hash.outputs.digests }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ========================================================
+      #
+      # Step 1: Build your artifacts.
+      #
+      # ========================================================
+      - name: Build Artifacts
+        run: |
+          echo "Building artifacts..."
+          echo "artifact1" > artifact1
+          echo "artifact2" > artifact2
+          echo "Artifacts built successfully."
+
+      # ========================================================
+      #
+      # Step 2: Generate the provenance subjects
+      #         This includes a SHA256 checksum for each artifact.
+      #
+      # ========================================================
+      - name: Generate Subject for Provenance
+        id: hash
+        run: |
+          set -euo pipefail
+          
+          echo "Generating subject for provenance..."
+          
+          # List the artifacts the provenance will refer to.
+          files=$(ls artifact*)
+          
+          if [ -z "$files" ]; then
+            echo "No artifacts found! Exiting..."
+            exit 1
+          fi
+          
+          # Generate the subjects (base64 encoded).
+          hashes=$(sha256sum $files | base64 -w0)
+          echo "hashes=${hashes}" >> "${GITHUB_OUTPUT}"
+          echo "Provenance subject generated successfully."
+
+  provenance:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read   # To read the workflow path.
+      id-token: write  # To sign the provenance.
+      contents: write  # To add assets to a release.
+    steps:
+      - name: Generate Provenance File
+        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.4.0
+        with:
+          base64-subjects: "${{ needs.build.outputs.digests }}"
+          upload-assets: true # Optional: Upload to a new release
